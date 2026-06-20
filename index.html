@@ -197,7 +197,7 @@ a.watch-yt:hover{text-decoration:underline;}
 <script>
 const { createClient } = supabase
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON)
-let currentSession=null,currentProfile=null,activeChallenge=null,playerYouTubeId=null,dailyYouTubeId=null,coachYouTubeId=null,playerLookup={},dailyDemoUrl=null,dailyTitle='Daily Challenge',dailyDescription='Complete today\'s session and submit your YouTube link.'
+let currentSession=null,currentProfile=null,activeChallenge=null,playerYouTubeId=null,dailyYouTubeId=null,coachYouTubeId=null,playerLookup={},dailyDemoUrl=null,dailyTitle='Daily Challenge',dailyDescription='Complete today\'s session and submit your YouTube link.',dailyConfig={wallPass:false,youtubeUrl:'',freeform:''}
 
 document.getElementById('login-crest-img').src=CREST_URL
 document.getElementById('header-crest-img').src=CREST_URL
@@ -434,15 +434,29 @@ async function submitYouTube(){
   }catch(e){errEl.style.display='block';errEl.textContent='Something went wrong. Please try again.';btn.disabled=false;btn.textContent='Submit for Coach Review';console.error(e)}
 }
 
+/* DAILY TASK LIST */
+function buildDailyTaskList(){
+  const tasks=[]
+  if(dailyConfig.wallPass) tasks.push('<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px"><span style="font-size:16px;flex-shrink:0">&#9917;</span><div><div style="font-size:13px;font-weight:500">Wall Pass 500</div><div style="font-size:12px;color:var(--muted)">250 passes with your right foot + 250 with your left foot against a wall, receiving the ball each time.</div></div></div>')
+  if(dailyConfig.youtubeUrl){
+    const ytId=extractYouTubeId(dailyConfig.youtubeUrl)
+    tasks.push('<div style="margin-bottom:10px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:16px">&#127909;</span><div style="font-size:13px;font-weight:500">Watch &amp; Complete</div></div>'+(ytId?'<div class="yt-wrap" style="margin-bottom:4px"><iframe src="'+ytEmbed(ytId)+'" allowfullscreen loading="lazy"></iframe></div>':'<a class="watch-yt" href="'+dailyConfig.youtubeUrl+'" target="_blank" rel="noreferrer">Watch challenge video &#8599;</a>')+'</div>')
+  }
+  if(dailyConfig.freeform) tasks.push('<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px"><span style="font-size:16px;flex-shrink:0">&#128221;</span><div><div style="font-size:13px;font-weight:500">Coach's Challenge</div><div style="font-size:12px;color:var(--muted)">'+esc(dailyConfig.freeform)+'</div></div></div>')
+  if(tasks.length===0) return '<p class="section-desc">No daily challenge set yet. Check back soon!</p>'
+  return '<div style="background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:14px">'+tasks.join('<div style="height:1px;background:var(--card-border);margin:8px 0"></div>')+( tasks.length>1?'<div style="font-size:12px;color:var(--peach);margin-top:8px;font-weight:500">&#9888; Complete ALL of the above in your session</div>':'' )+'</div>'
+}
+
 /* DAILY DEMO URL */
 async function loadDailyDemoUrl(){
   try{
-    const{data}=await sb.from('settings').select('key,value').in('key',['daily_demo_url','daily_title','daily_description'])
+    const{data}=await sb.from('settings').select('key,value').in('key',['daily_demo_url','daily_config'])
     if(data){
       data.forEach(row=>{
         if(row.key==='daily_demo_url') dailyDemoUrl=row.value||null
-        if(row.key==='daily_title') dailyTitle=row.value||'Daily Challenge'
-        if(row.key==='daily_description') dailyDescription=row.value||'Complete today\'s session and submit your YouTube link.'
+        if(row.key==='daily_config'){
+          try{ dailyConfig=JSON.parse(row.value)||dailyConfig }catch(e){}
+        }
       })
     }
   }catch(e){ dailyDemoUrl=null }
@@ -510,8 +524,8 @@ function renderDaily(el,todaySub,totalCompleted,weeklyCount){
   const weeklyProgress=weeklyCount>=STREAK_DAYS?'<div class="daily-banner" style="background:linear-gradient(135deg,rgba(110,207,138,0.15),rgba(110,207,138,0.05));border-color:var(--green-border)"><div class="daily-streak-num" style="color:var(--green)">&#128293;</div><div><div style="font-size:14px;font-weight:500">Streak bonus earned!</div><div style="font-size:12px;color:var(--muted);margin-top:2px">You completed 5 sessions this week. +'+STREAK_BONUS+' pts awarded!</div></div></div>':'<div class="daily-banner"><div class="daily-streak-num">'+weeklyCount+'/5</div><div><div style="font-size:14px;font-weight:500">Sessions this week</div><div style="font-size:12px;color:var(--muted);margin-top:2px">'+(STREAK_DAYS-weeklyCount)+' more to earn the +'+STREAK_BONUS+' bonus this week</div></div></div>'
   el.innerHTML=weeklyProgress
   +'<div class="card">'+demoSection+'<div class="demo-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Daily challenge</div>'
-  +'<div class="section-title">'+esc(dailyTitle)+'</div>'
-  +'<p class="section-desc">'+esc(dailyDescription)+'</p>'
+  +'<div class="section-title">Daily Challenge</div>'
+  +buildDailyTaskList()
   +'<div class="pill-row"><span class="pill blue">📅 Today &mdash; '+todayFmt+'</span><span class="pill">&#11088; '+DAILY_POINTS+' pts</span><span class="pill green">🔥 5 sessions/week = +'+STREAK_BONUS+' bonus</span></div>'
   +'<div id="daily-submission-area">'+renderDailyArea(todaySub,weeklyCount)+'</div></div>'
   +'<p style="font-size:12px;color:var(--muted);text-align:center">Complete 5 sessions any day Mon-Sun to earn the weekly bonus</p>'
@@ -618,14 +632,34 @@ function buildCoachHTML(weeklyPending,dailyPending,players){
   +'<div class="pts-grid"><div class="field" style="margin-bottom:0"><label>Points (+add / -deduct)</label><input id="adj-pts" type="number" placeholder="e.g. 10 or -10" /></div><div class="field" style="margin-bottom:0"><label>Reason (optional)</label><input id="adj-reason" type="text" placeholder="e.g. Bonus for effort" /></div></div>'
   +'<button class="btn-primary" id="adj-btn" onclick="adjustPoints()" style="margin-top:14px">⚡ Apply Points</button><div id="adj-toast" style="display:none" class="toast">&#10003; Points updated!</div><div id="adj-error" style="display:none;color:var(--danger);font-size:13px;margin-top:8px"></div></div></div>'
 
-  +'<div class="admin-section"><div class="admin-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Daily challenge</div>'
-  +'<div class="card" style="margin-bottom:10px"><div class="admin-label" style="margin-bottom:10px">Customise daily challenge</div>'
-  +'<div class="field"><label>Daily challenge title</label><input id="daily-custom-title" placeholder="e.g. Wall Pass 500 + Sprint Circuit" value="'+esc(dailyTitle)+'" /></div>'
-  +'<div class="field"><label>Description — what players need to do</label><textarea id="daily-custom-desc" rows="3" placeholder="Describe the daily challenge...">'+esc(dailyDescription)+'</textarea></div>'
-  +'<div class="field"><label>Demo video — paste YouTube link (optional)</label><div class="yt-input-wrap"><span class="yt-icon">&#9654;&#65039;</span><input id="daily-demo-input" type="url" placeholder="https://youtube.com/watch?v=..." oninput="handleDailyDemoInput(this.value)" /></div><div id="daily-demo-feedback"></div><div id="daily-demo-preview" style="display:none;margin-top:8px"><div class="coach-yt-wrap"><iframe id="daily-demo-frame" src="" allowfullscreen loading="lazy"></iframe></div><button class="cancel-link" style="margin-top:4px" onclick="clearDailyDemo()">&#10005; Remove</button></div></div>'
-  +'<button class="btn-secondary" onclick="saveCustomDaily()" style="margin-top:4px">Save daily challenge</button>'
-  +'<div id="daily-custom-toast" style="display:none" class="toast">&#10003; Daily challenge updated!</div>'
-  +'<div id="daily-custom-error" style="display:none;color:var(--danger);font-size:13px;margin-top:8px"></div>'
+  +'<div class="admin-section"><div class="admin-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Daily challenge builder</div>'
+  +'<div class="card" style="margin-bottom:10px">'
+  +'<p style="font-size:12px;color:var(--muted);margin-bottom:14px">Select one or more challenges for your players to complete each day. Players see all selected options and submit one YouTube link covering everything.</p>'
+
+  +'<div style="padding:12px 14px;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius-sm);margin-bottom:10px">'
+  +'<label style="display:flex;align-items:center;gap:10px;cursor:pointer">'
+  +'<input type="checkbox" id="dc-wallpass" style="width:18px;height:18px;accent-color:var(--peach);flex-shrink:0" '+(dailyConfig.wallPass?'checked':'')+'>'
+  +'<div><div style="font-size:13px;font-weight:500">&#9917; Wall Pass 500</div><div style="font-size:12px;color:var(--muted)">250 passes each foot against a wall</div></div></label></div>'
+
+  +'<div style="padding:12px 14px;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius-sm);margin-bottom:10px">'
+  +'<label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:10px">'
+  +'<input type="checkbox" id="dc-youtube" style="width:18px;height:18px;accent-color:var(--peach);flex-shrink:0" '+(dailyConfig.youtubeUrl?'checked':'')+'>'
+  +'<div style="font-size:13px;font-weight:500">&#127909; YouTube Challenge</div></label>'
+  +'<div class="yt-input-wrap"><span class="yt-icon">&#9654;&#65039;</span><input id="dc-youtube-url" type="url" placeholder="Paste YouTube link..." value="'+esc(dailyConfig.youtubeUrl||'')+'" oninput="handleDCYouTubeInput(this.value)" /></div>'
+  +'<div id="dc-yt-feedback"></div>'
+  +'<div id="dc-yt-preview" style="display:'+(dailyConfig.youtubeUrl?'block':'none')+';margin-top:8px">'
+  +(dailyConfig.youtubeUrl?'<div class="coach-yt-wrap"><iframe src="'+ytEmbed(extractYouTubeId(dailyConfig.youtubeUrl))+'" allowfullscreen loading="lazy"></iframe></div>':'<div class="coach-yt-wrap" id="dc-yt-frame-wrap" style="display:none"><iframe id="dc-yt-frame" src="" allowfullscreen loading="lazy"></iframe></div>')
+  +'</div></div>'
+
+  +'<div style="padding:12px 14px;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius-sm);margin-bottom:14px">'
+  +'<label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:10px">'
+  +'<input type="checkbox" id="dc-freeform" style="width:18px;height:18px;accent-color:var(--peach);flex-shrink:0" '+(dailyConfig.freeform?'checked':'')+'>'
+  +'<div style="font-size:13px;font-weight:500">&#128221; Custom Description</div></label>'
+  +'<textarea id="dc-freeform-text" rows="3" placeholder="Describe what players need to do..." style="width:100%;padding:10px 12px;background:rgba(255,255,255,.07);border:1px solid var(--card-border);border-radius:var(--radius-sm);color:var(--white);font-size:13px;font-family:var(--font-b);resize:vertical">'+esc(dailyConfig.freeform||'')+'</textarea></div>'
+
+  +'<button class="btn-primary" onclick="saveDailyConfig()" style="margin-top:4px">Save Daily Challenge</button>'
+  +'<div id="daily-config-toast" style="display:none" class="toast">&#10003; Daily challenge updated for your squad!</div>'
+  +'<div id="daily-config-error" style="display:none;color:var(--danger);font-size:13px;margin-top:8px"></div>'
   +'</div>'
   +'<div class="card" style="margin-bottom:0"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px"><div><div style="font-size:14px;font-weight:500">Daily submissions</div><div style="font-size:12px;color:var(--muted);margin-top:2px">Automatically off on weekends. Use this to pause mid-week.</div></div><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><span id="daily-toggle-label" style="font-size:12px;color:var(--muted)">Loading...</span><div id="daily-toggle" onclick="toggleDaily()" style="width:44px;height:24px;border-radius:12px;background:var(--card-border);cursor:pointer;position:relative;transition:background .2s;flex-shrink:0"><div id="daily-toggle-thumb" style="width:20px;height:20px;border-radius:50%;background:var(--white);position:absolute;top:2px;left:2px;transition:left .2s"></div></div></label></div></div></div>'
   +'<div id="daily-toggle-toast" style="display:none" class="toast">&#10003; Daily challenge updated!</div></div>'
@@ -976,24 +1010,60 @@ async function saveDailyDemo(){
 }
 
 /* CUSTOM DAILY CHALLENGE (U15) */
-async function saveCustomDaily(){
-  const title=document.getElementById('daily-custom-title')?.value.trim()
-  const desc=document.getElementById('daily-custom-desc')?.value.trim()
-  const errEl=document.getElementById('daily-custom-error')
-  if(!title||!desc){ if(errEl){errEl.style.display='block';errEl.textContent='Please fill in the title and description.'} return }
+function handleDCYouTubeInput(val){
+  const id=extractYouTubeId(val)
+  const fb=document.getElementById('dc-yt-feedback')
+  const preview=document.getElementById('dc-yt-preview')
+  const frameWrap=document.getElementById('dc-yt-frame-wrap')
+  const frame=document.getElementById('dc-yt-frame')
+  const cb=document.getElementById('dc-youtube')
+  if(!val.trim()){fb.innerHTML='';if(preview)preview.style.display='none';return}
+  if(id){
+    fb.innerHTML='<div class="yt-valid" style="margin-top:5px">&#10003; Link recognised</div>'
+    if(frame) frame.src=ytEmbed(id)
+    if(frameWrap) frameWrap.style.display='block'
+    if(preview) preview.style.display='block'
+    if(cb) cb.checked=true
+  } else {
+    fb.innerHTML='<div class="yt-invalid" style="margin-top:5px">Not a valid YouTube link.</div>'
+  }
+}
+
+async function saveDailyConfig(){
+  const wallPass=document.getElementById('dc-wallpass')?.checked||false
+  const youtubeChecked=document.getElementById('dc-youtube')?.checked||false
+  const youtubeUrl=document.getElementById('dc-youtube-url')?.value.trim()||''
+  const freeformChecked=document.getElementById('dc-freeform')?.checked||false
+  const freeformText=document.getElementById('dc-freeform-text')?.value.trim()||''
+  const errEl=document.getElementById('daily-config-error')
+
+  if(!wallPass&&!youtubeChecked&&!freeformChecked){
+    if(errEl){errEl.style.display='block';errEl.textContent='Please select at least one challenge option.'}
+    return
+  }
+  if(youtubeChecked&&!extractYouTubeId(youtubeUrl)){
+    if(errEl){errEl.style.display='block';errEl.textContent='Please enter a valid YouTube link for the YouTube challenge.'}
+    return
+  }
+  if(freeformChecked&&!freeformText){
+    if(errEl){errEl.style.display='block';errEl.textContent='Please enter a description for the custom challenge.'}
+    return
+  }
+
+  const config={
+    wallPass,
+    youtubeUrl:youtubeChecked?youtubeUrl:'',
+    freeform:freeformChecked?freeformText:''
+  }
   try{
-    await sb.from('settings').upsert({key:'daily_title',value:title})
-    await sb.from('settings').upsert({key:'daily_description',value:desc})
-    if(coachYouTubeId){
-      const url='https://www.youtube.com/watch?v='+coachYouTubeId
-      await sb.from('settings').upsert({key:'daily_demo_url',value:url})
-      dailyDemoUrl=url
-    }
-    dailyTitle=title
-    dailyDescription=desc
-    showToast('daily-custom-toast')
+    await sb.from('settings').upsert({key:'daily_config',value:JSON.stringify(config)})
+    dailyConfig=config
+    showToast('daily-config-toast')
     if(errEl) errEl.style.display='none'
-  }catch(e){ if(errEl){errEl.style.display='block';errEl.textContent='Could not save. Try again.'} console.error(e) }
+  }catch(e){
+    if(errEl){errEl.style.display='block';errEl.textContent='Could not save. Try again.'}
+    console.error(e)
+  }
 }
 
 /* DAILY TOGGLE */
